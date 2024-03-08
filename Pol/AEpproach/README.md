@@ -27,6 +27,8 @@ First, I'd like to check a boxplot with the mean of all PCA variables. This way,
 
 Secondly, will have to split the train, test and validation data. However, this has some complexity: I have to save a very big part of the data to train the AutoEncoder model. With the remaining data, which will be balanced between licit and illicit samples, I will have to do a split in train and test. 
 
+# Use reconstruction loss (ROC)
+
 \
 **Wish me luck!**
 
