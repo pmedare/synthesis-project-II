@@ -25,7 +25,7 @@ def load_data(data_dir, start_ts, end_ts):
 	num_tx = features.shape[0] # number of transactions
 	total_tx = list(classes.index) # list of all transactions
 	
-    print('')
+    print('Number of features:', num_features)
 
 	# select only the transactions which are labelled
 	labelled_classes = classes[classes['class'] != 'unknown']
