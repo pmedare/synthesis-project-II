@@ -1,12 +1,52 @@
 
+# Import necessary libraries
 import torch
 from torch.utils.data import Dataset
 import pandas as pd
 import numpy as np
 import os
+import matplotlib.pyplot as plt
+import seaborn as sns
+import networkx as nx
+from scipy.sparse import lil_matrix # If the graph is sparse (i.e., there are not many edges), a sparse representation can save a lot of memory.
 
+def create_adjacency_matrix(edgelist, total_tx):
+    # Create a mapping from transaction ID to index
+    tx_to_index = {tx_id: index for index, tx_id in enumerate(total_tx)}
+    
+    num_tx = len(total_tx)
+    adj_matrix = lil_matrix((num_tx, num_tx), dtype=int)
+    
+    for tx_id1, row in edgelist.iterrows():
+        tx_id2 = row['txId2']
+        
+        # Map the transaction IDs to indices
+        index1 = tx_to_index[tx_id1]
+        index2 = tx_to_index[tx_id2]
+        
+        adj_matrix[index1, index2] = 1
+        adj_matrix[index2, index1] = 1
+    
+    return adj_matrix
 
-def load_data(data_dir, start_ts, end_ts):
+def create_networkx_graph(features, edgelist):
+    """ Creates a NetworkX graph with nodes and edges """
+    G = nx.DiGraph()
+    
+    # Add nodes along with their features
+    for node_id, feature_values in features.iterrows():
+        feature_dict = {f'feature_{i+1}': val for i, val in enumerate(feature_values)}
+        G.add_node(node_id, **feature_dict)
+    
+    # Add edges
+    for tx_id1, row in edgelist.iterrows():
+        for tx_id2 in row:
+            G.add_edge(tx_id1, tx_id2)
+            
+    return G
+
+# Function to load the data from the csv files
+def load_data(data_dir):
 	
     # Load the data from the csv files
 	classes_csv = 'elliptic_txs_classes.csv'
@@ -20,76 +60,79 @@ def load_data(data_dir, start_ts, end_ts):
 	
 	print('\nData loaded from the csv files\n')
 
+	# Print all unique classes
+	print('Unique classes:', classes['class'].unique())
+	print()
+	
+	# Display first few rows of the classes dataframe
+	print('Classes dataframe:')
+	print(classes.head())
+	print()
+
+	# Display first few rows of the edgelist dataframe
+	print('Edgelist dataframe:')
+	print(edgelist.head())
+	print()
+
+	# Display first few rows of the features dataframe
+	print('Features dataframe:')
+	print(features.head())
+	print()
+
     # Extract information from the data
 	num_features = features.shape[1] # number of features
 	num_tx = features.shape[0] # number of transactions
 	total_tx = list(classes.index) # list of all transactions
 	
-    print('Number of features:', num_features)
+	print('Number of features:', num_features)
+	print('Number of transactions:', num_tx)
+	print('First 10 transactions:', total_tx[:10])
+	print()	
 
-	# select only the transactions which are labelled
-	labelled_classes = classes[classes['class'] != 'unknown']
-	labelled_tx = list(labelled_classes.index)
+	labelled_classes = classes[classes['class'] != 'unknown'] # labels of the transactions which are known
+	unlabelled_classes = classes[classes['class'] == 'unknown'] # labels of the transactions which are unknown
+	
+	labelled_tx = list(labelled_classes.index) # list of transactions which are labelled
+	unlabelled_tx = list(unlabelled_classes.index) # list of transactions which are unlabelled
 
-	print('\nonly the transactions which are labelled selected')
+	print('Number of labelled transactions:', len(labelled_tx))
+	print('Number of unlabelled transactions:', len(unlabelled_tx))
+	print()
+     
+	# Create the adjacency matrix
+	adj_matrix = create_adjacency_matrix(edgelist, total_tx)
+	print("Adjacency Matrix Created!\n")
+     
+	# Print the shape of the adjacency matrix
+	print('Shape of the adjacency matrix:', adj_matrix.shape)
+     
+	# Print the number of non-zero elements in the adjacency matrix
+	print('Number of non-zero elements in the adjacency matrix:', adj_matrix.nnz)
+	print()
+    
+    # Create the graph
+	G = create_networkx_graph(features, edgelist)
+	print("NetworkX Graph Created!\n")
+     
+	# Print the number of nodes in the graph
+	print('Number of nodes in the graph:', G.number_of_nodes())
+	print("Number of edges in the graph:", G.number_of_edges())
+	print()
+     
+	# Print the attributes of the first node and the attributes of the first edge
+	first_node = list(G.nodes)[0]
+	# print('Attributes of the first node:', G.nodes[first_node])
+	first_edge = list(G.edges)[0]
+	# print('Attributes of the first edge:', G.edges[first_edge])
+	# print()
 
-	# to calculate a list of adjacency matrices for the different timesteps
+	return adj_matrix, G
 
-	adj_mats = []
-	features_labelled_ts = []
-	classes_ts = []
-	num_ts = 49 # number of timestamps from the paper
+if __name__ == '__main__':
+	
+	data_dir = "/home/adriangar8/Documents/academia/year3/semester2/synthesis_project_II/data/elliptic_bitcoin_dataset"
 
-	# Convert total_tx to a mapping of transaction ID to matrix index
-	tx_to_index = {tx_id: idx for idx, tx_id in enumerate(total_tx)}
+	# adj_mats, features_labelled_ts, classes_ts = load_data(data_dir, start_ts, end_ts)
+	load_data(data_dir)
 
-	print('\nConvert total_tx to a mapping of transaction ID to matrix index')
-
-	#For every timestep between start and end, it prepares an adj matrix
-
-	for ts in range(start_ts, end_ts):
-    	
-		features_ts = features[features[1] == ts + 1]
-            
-		tx_ts = list(features_ts.index)
-        
-		labelled_tx_ts = [tx for tx in tx_ts if tx in set(labelled_tx)]
-
-        # Using lil_matrix for easier incremental construction
-        
-		adj_mat = lil_matrix((num_tx, num_tx), dtype=int)
-
-        
-		edgelist_labelled_ts = edgelist.loc[edgelist.index.intersection(labelled_tx_ts).unique()]
-        
-		for i in range(edgelist_labelled_ts.shape[0]):
-            
-			tx1 = edgelist_labelled_ts.index[i]
-            
-			tx2 = edgelist_labelled_ts.iloc[i]['txId2']
-            
-			if tx1 in tx_to_index and tx2 in tx_to_index:  # Check if both tx exist in the mapping
-                
-				adj_mat[tx_to_index[tx1], tx_to_index[tx2]] = 1
-
-		print('end of loop')
-
-        # Convert back to csr_matrix for efficient arithmetic and slicing
-
-		adj_mat_csr = adj_mat.tocsr()
-        
-		adj_mats.append(adj_mat_csr)
-
-		print('adjacency matrix done')
-
-        # Filter features and classes for labelled transactions of this timestep
-        
-		features_labelled_ts.append(features.loc[labelled_tx_ts])
-
-		print('features labelled done')
-        
-		classes_ts.append(classes.loc[labelled_tx_ts])
-
-		print('classes ts done')
-
-	return adj_mats, features_labelled_ts, classes_ts
+	print('Data loaded successfully!\n')
